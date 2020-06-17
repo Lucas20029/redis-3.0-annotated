@@ -39,6 +39,12 @@
 #include <sys/types.h>
 #include <stdarg.h>
 
+// sdshdr 可以理解成一个buffer。这个buffer的一部分空间存了 有效字符串数据，剩余的空间是空白可用的。
+// sdshdr.len  代表了 buffer内 有效字符串的长度
+// sdshdr.free 代表了 buffer内 还有的可用空间长度
+
+// sds类型是 char* 的别名，用于指向 sdshdr.buffer 的开头。 也就是说， *sdshdr + sizeof(sdshdr)，就等于sds。
+
 /*
  * 类型别名，用于指向 sdshdr 的 buf 属性
  */
@@ -60,11 +66,12 @@ struct sdshdr {
 };
 
 /*
- * 返回 sds 实际保存的字符串的长度
+ * 根据sds实例，返回 sds 实际保存的字符串的长度
  *
  * T = O(1)
  */
 static inline size_t sdslen(const sds s) {
+    //sds是 char* 指针类型。 s-sizeof(struct sdshdr) 就是把 指针s 向前移动 sdshdr 长度，到达 sdshdr的头部。
     struct sdshdr *sh = (void*)(s-(sizeof(struct sdshdr)));
     return sh->len;
 }

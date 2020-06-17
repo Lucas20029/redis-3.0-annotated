@@ -83,14 +83,99 @@ static int checkStringLength(redisClient *c, long long size) {
  */
 
 #define REDIS_SET_NO_FLAGS 0
-#define REDIS_SET_NX (1<<0)     /* Set if key not exists. */
-#define REDIS_SET_XX (1<<1)     /* Set if key exists. */
 
-void setGenericCommand(redisClient *c, int flags, robj *key, robj *val, robj *expire, int unit, robj *ok_reply, robj *abort_reply) {
+ // 1<<0 用位移表示枚举 可以在用的时候，把多个枚举拼起来。比如 REDIS_SET_NX | REDIS_SET_XX。
+// 把这种写法等价于C#: buttons = WindowButton.YES | WindowButton.NO | WindowButton.Close..
+#define REDIS_SET_NX (1<<0)     /* Set if key not exists. */ 
+#define REDIS_SET_XX (1<<1)     /* Set if key exists. */
+//比如再有新的枚举，可以
+//#define REDIS_NEW_ENUM (1<<2)
+
+
+#pragma region Set Key Value
+
+//从用户端的set key value 命令中，提取 set key value 后面的参数选项值： NX XX EX<seconds> PX<milseconds>
+ /* SET key value [NX] [XX] [EX <seconds>] [PX <milliseconds>] */
+void setCommand(redisClient* c) {
+    int j;
+    robj* expire = NULL;
+    int unit = UNIT_SECONDS;
+    int flags = REDIS_SET_NO_FLAGS;
+
+    // 设置选项参数
+    for (j = 3; j < c->argc; j++) {
+        char* a = c->argv[j]->ptr;
+        robj* next = (j == c->argc - 1) ? NULL : c->argv[j + 1]; //下一个参数（如果有的话），否则为null
+
+        if ((a[0] == 'n' || a[0] == 'N') &&
+            (a[1] == 'x' || a[1] == 'X') && a[2] == '\0') {
+            flags |= REDIS_SET_NX;
+        }
+        else if ((a[0] == 'x' || a[0] == 'X') &&
+            (a[1] == 'x' || a[1] == 'X') && a[2] == '\0') {
+            flags |= REDIS_SET_XX;
+        }
+        else if ((a[0] == 'e' || a[0] == 'E') &&
+            (a[1] == 'x' || a[1] == 'X') && a[2] == '\0' && next) {
+            unit = UNIT_SECONDS;
+            expire = next;
+            j++;
+        }
+        else if ((a[0] == 'p' || a[0] == 'P') &&
+            (a[1] == 'x' || a[1] == 'X') && a[2] == '\0' && next) {
+            unit = UNIT_MILLISECONDS;
+            expire = next;
+            j++;
+        }
+        else {
+            addReply(c, shared.syntaxerr);
+            return;
+        }
+    }
+
+    // 尝试对值对象进行编码
+    c->argv[2] = tryObjectEncoding(c->argv[2]);
+
+    //解析完参数后，执行通用的set函数
+    //c: 客户端，用户返回数据
+    //flags: 1：set NX，2：set XX
+    //c->argv[1]：Key
+    //c->argv[2]：Value
+    //expire: 过期时间，可能为秒，也可能为毫秒。这里不管，只是负责从用户端命令中提取
+    //unit：过期时间单位。0：秒，1：毫秒
+    setGenericCommand(c, flags, c->argv[1], c->argv[2], expire, unit, NULL, NULL);
+}
+
+//SetNX（Set if Not eXist）
+//SetNX key value 等同于 Set key value NX 。只有在Key不存在的时候才能进行设置
+void setnxCommand(redisClient* c) {
+    c->argv[2] = tryObjectEncoding(c->argv[2]);
+    setGenericCommand(c, REDIS_SET_NX, c->argv[1], c->argv[2], NULL, 0, shared.cone, shared.czero);
+}
+//SetXX key value 只能更新key，不能新建。如果key不存在，则失败
+void setexCommand(redisClient* c) {
+    c->argv[3] = tryObjectEncoding(c->argv[3]);
+    setGenericCommand(c, REDIS_SET_NO_FLAGS, c->argv[1], c->argv[3], c->argv[2], UNIT_SECONDS, NULL, NULL);
+}
+
+void psetexCommand(redisClient* c) {
+    c->argv[3] = tryObjectEncoding(c->argv[3]);
+    setGenericCommand(c, REDIS_SET_NO_FLAGS, c->argv[1], c->argv[3], c->argv[2], UNIT_MILLISECONDS, NULL, NULL);
+}
+
+
+//执行set key value函数的核心
+//c: 客户端实例，用于返回数据
+//flags: 1：set NX，2：set XX
+//c->argv[1]：Key
+//c->argv[2]：Value
+//expire: 过期时间的数值，根据下个参数单位，这个数可能为秒，也可能为毫秒。
+//unit：过期时间单位。0：秒，1：毫秒
+void setGenericCommand(redisClient* c, int flags, robj* key, robj* val, robj* expire, int unit, robj* ok_reply, robj* abort_reply) {
 
     long long milliseconds = 0; /* initialized to avoid any harmness warning */
 
-    // 取出过期时间
+    // 取出过期时间，归一化时间为 毫秒
     if (expire) {
 
         // 取出 expire 参数的值
@@ -100,7 +185,7 @@ void setGenericCommand(redisClient *c, int flags, robj *key, robj *val, robj *ex
 
         // expire 参数的值不正确时报错
         if (milliseconds <= 0) {
-            addReplyError(c,"invalid expire time in SETEX");
+            addReplyError(c, "invalid expire time in SETEX");
             return;
         }
 
@@ -112,113 +197,73 @@ void setGenericCommand(redisClient *c, int flags, robj *key, robj *val, robj *ex
 
     // 如果设置了 NX 或者 XX 参数，那么检查条件是否不符合这两个设置
     // 在条件不符合时报错，报错的内容由 abort_reply 参数决定
-    if ((flags & REDIS_SET_NX && lookupKeyWrite(c->db,key) != NULL) ||
-        (flags & REDIS_SET_XX && lookupKeyWrite(c->db,key) == NULL))
+    //flags & REDIS_SET_NX 相当于C#中的 flags==REDIS_SET_NX
+    //因为，REDIS_SET_NX=1<<0，flags
+
+    //lookupKeyWrite：为执行写入操作而获取数据库中的值
+    if ((flags & REDIS_SET_NX && lookupKeyWrite(c->db, key) != NULL) || //如果是 NX且 DB中能取到值，说明 Set NX失败！（想想分布式锁的业务）
+        (flags & REDIS_SET_XX && lookupKeyWrite(c->db, key) == NULL))
     {
         addReply(c, abort_reply ? abort_reply : shared.nullbulk);
         return;
     }
 
     // 将键值关联到数据库
-    setKey(c->db,key,val);
+    setKey(c->db, key, val);
 
-    // 将数据库设为脏
+    // 将数据库设为脏 //cc:我理解是记录dirty的次数。
     server.dirty++;
 
     // 为键设置过期时间
-    if (expire) setExpire(c->db,key,mstime()+milliseconds);
+    if (expire) setExpire(c->db, key, mstime() + milliseconds);
 
     // 发送事件通知
-    notifyKeyspaceEvent(REDIS_NOTIFY_STRING,"set",key,c->db->id);
+    notifyKeyspaceEvent(REDIS_NOTIFY_STRING, "set", key, c->db->id);
 
     // 发送事件通知
     if (expire) notifyKeyspaceEvent(REDIS_NOTIFY_GENERIC,
-        "expire",key,c->db->id);
+        "expire", key, c->db->id);
 
     // 设置成功，向客户端发送回复
     // 回复的内容由 ok_reply 决定
     addReply(c, ok_reply ? ok_reply : shared.ok);
 }
+#pragma endregion
 
-/* SET key value [NX] [XX] [EX <seconds>] [PX <milliseconds>] */
-void setCommand(redisClient *c) {
-    int j;
-    robj *expire = NULL;
-    int unit = UNIT_SECONDS;
-    int flags = REDIS_SET_NO_FLAGS;
 
-    // 设置选项参数
-    for (j = 3; j < c->argc; j++) {
-        char *a = c->argv[j]->ptr;
-        robj *next = (j == c->argc-1) ? NULL : c->argv[j+1];
+#pragma region Get Key
 
-        if ((a[0] == 'n' || a[0] == 'N') &&
-            (a[1] == 'x' || a[1] == 'X') && a[2] == '\0') {
-            flags |= REDIS_SET_NX;
-        } else if ((a[0] == 'x' || a[0] == 'X') &&
-                   (a[1] == 'x' || a[1] == 'X') && a[2] == '\0') {
-            flags |= REDIS_SET_XX;
-        } else if ((a[0] == 'e' || a[0] == 'E') &&
-                   (a[1] == 'x' || a[1] == 'X') && a[2] == '\0' && next) {
-            unit = UNIT_SECONDS;
-            expire = next;
-            j++;
-        } else if ((a[0] == 'p' || a[0] == 'P') &&
-                   (a[1] == 'x' || a[1] == 'X') && a[2] == '\0' && next) {
-            unit = UNIT_MILLISECONDS;
-            expire = next;
-            j++;
-        } else {
-            addReply(c,shared.syntaxerr);
-            return;
-        }
-    }
-
-    // 尝试对值对象进行编码
-    c->argv[2] = tryObjectEncoding(c->argv[2]);
-
-    setGenericCommand(c,flags,c->argv[1],c->argv[2],expire,unit,NULL,NULL);
+//下面是get key的核心方法
+void getCommand(redisClient* c) {
+    getGenericCommand(c);
 }
 
-void setnxCommand(redisClient *c) {
-    c->argv[2] = tryObjectEncoding(c->argv[2]);
-    setGenericCommand(c,REDIS_SET_NX,c->argv[1],c->argv[2],NULL,0,shared.cone,shared.czero);
-}
-
-void setexCommand(redisClient *c) {
-    c->argv[3] = tryObjectEncoding(c->argv[3]);
-    setGenericCommand(c,REDIS_SET_NO_FLAGS,c->argv[1],c->argv[3],c->argv[2],UNIT_SECONDS,NULL,NULL);
-}
-
-void psetexCommand(redisClient *c) {
-    c->argv[3] = tryObjectEncoding(c->argv[3]);
-    setGenericCommand(c,REDIS_SET_NO_FLAGS,c->argv[1],c->argv[3],c->argv[2],UNIT_MILLISECONDS,NULL,NULL);
-}
-
-int getGenericCommand(redisClient *c) {
-    robj *o;
+int getGenericCommand(redisClient* c) {
+    robj* o;
 
     // 尝试从数据库中取出键 c->argv[1] 对应的值对象
     // 如果键不存在时，向客户端发送回复信息，并返回 NULL
-    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.nullbulk)) == NULL)
+    if ((o = lookupKeyReadOrReply(c, c->argv[1], shared.nullbulk)) == NULL)
         return REDIS_OK;
 
     // 值对象存在，检查它的类型
     if (o->type != REDIS_STRING) {
         // 类型错误
-        addReply(c,shared.wrongtypeerr);
+        addReply(c, shared.wrongtypeerr);
         return REDIS_ERR;
-    } else {
+    }
+    else {
         // 类型正确，向客户端返回对象的值
-        addReplyBulk(c,o);
+        addReplyBulk(c, o);
         return REDIS_OK;
     }
 }
 
-void getCommand(redisClient *c) {
-    getGenericCommand(c);
-}
+#pragma endregion
 
+#pragma region GetSet Key Value
+//Getset 命令用于设置指定 key 的值，并返回 key 的旧值。
+//没啥特别之处，就是内部先调Get，然后调Set
 void getsetCommand(redisClient *c) {
 
     // 取出并返回键的值对象
@@ -236,7 +281,15 @@ void getsetCommand(redisClient *c) {
     // 将服务器设为脏
     server.dirty++;
 }
+#pragma endregion
 
+#pragma region  Set/Get Range 
+//Redis Setrange 命令用指定的字符串覆盖给定 key 所储存的字符串值，覆盖的位置从偏移量 offset 开始。
+//格式： SETRANGE KEY_NAME OFFSET VALUE
+//用法：
+// >  SET key1 "Hello World"
+// >  SETRANGE key1 6 "Redis" //从key1的第6个（0开头）字符开始替换，替换成 Redis        
+// >  GET key1       输出：Hello Redis
 void setrangeCommand(redisClient *c) {
     robj *o;
     long offset;
@@ -375,45 +428,58 @@ void getrangeCommand(redisClient *c) {
     }
 }
 
-void mgetCommand(redisClient *c) {
+#pragma endregion
+
+#pragma region mget key1 key2 key3
+
+void mgetCommand(redisClient* c) {
     int j;
 
-    addReplyMultiBulkLen(c,c->argc-1);
+    addReplyMultiBulkLen(c, c->argc - 1);
     // 查找并返回所有输入键的值
     for (j = 1; j < c->argc; j++) {
         // 查找键 c->argc[j] 的值
-        robj *o = lookupKeyRead(c->db,c->argv[j]);
+        robj* o = lookupKeyRead(c->db, c->argv[j]);
         if (o == NULL) {
             // 值不存在，向客户端发送空回复
-            addReply(c,shared.nullbulk);
-        } else {
+            addReply(c, shared.nullbulk);
+        }
+        else {
             if (o->type != REDIS_STRING) {
                 // 值存在，但不是字符串类型
-                addReply(c,shared.nullbulk);
-            } else {
+                addReply(c, shared.nullbulk);
+            }
+            else {
                 // 值存在，并且是字符串
-                addReplyBulk(c,o);
+                addReplyBulk(c, o);
             }
         }
     }
 }
 
-void msetGenericCommand(redisClient *c, int nx) {
+#pragma endregion
+
+#pragma region mset
+
+//mset key1 value1 key2 value2 key3 value3
+//msetnx key1 value1 key2 value2 key3 value3：先检查：只要有一个键是存在的，那么就向客户端发送空回复。
+//其他没什么了，内存中for循环设置key-value
+void msetGenericCommand(redisClient* c, int nx) {
     int j, busykeys = 0;
 
     // 键值参数不是成相成对出现的，格式不正确
     if ((c->argc % 2) == 0) {
-        addReplyError(c,"wrong number of arguments for MSET");
+        addReplyError(c, "wrong number of arguments for MSET");
         return;
     }
     /* Handle the NX flag. The MSETNX semantic is to return zero and don't
      * set nothing at all if at least one already key exists. */
-    // 如果 nx 参数为真，那么检查所有输入键在数据库中是否存在
-    // 只要有一个键是存在的，那么就向客户端发送空回复
-    // 并放弃执行接下来的设置操作
+     // 如果 nx 参数为真，那么检查所有输入键在数据库中是否存在
+     // 只要有一个键是存在的，那么就向客户端发送空回复
+     // 并放弃执行接下来的设置操作
     if (nx) {
         for (j = 1; j < c->argc; j += 2) {
-            if (lookupKeyWrite(c->db,c->argv[j]) != NULL) {
+            if (lookupKeyWrite(c->db, c->argv[j]) != NULL) {
                 busykeys++;
             }
         }
@@ -429,32 +495,34 @@ void msetGenericCommand(redisClient *c, int nx) {
     for (j = 1; j < c->argc; j += 2) {
 
         // 对值对象进行解码
-        c->argv[j+1] = tryObjectEncoding(c->argv[j+1]);
+        c->argv[j + 1] = tryObjectEncoding(c->argv[j + 1]);
 
         // 将键值对关联到数据库
         // c->argc[j] 为键
         // c->argc[j+1] 为值
-        setKey(c->db,c->argv[j],c->argv[j+1]);
+        setKey(c->db, c->argv[j], c->argv[j + 1]);
 
         // 发送事件通知
-        notifyKeyspaceEvent(REDIS_NOTIFY_STRING,"set",c->argv[j],c->db->id);
+        notifyKeyspaceEvent(REDIS_NOTIFY_STRING, "set", c->argv[j], c->db->id);
     }
 
     // 将服务器设为脏
-    server.dirty += (c->argc-1)/2;
+    server.dirty += (c->argc - 1) / 2;
 
     // 设置成功
     // MSET 返回 OK ，而 MSETNX 返回 1
     addReply(c, nx ? shared.cone : shared.ok);
 }
 
-void msetCommand(redisClient *c) {
-    msetGenericCommand(c,0);
+void msetCommand(redisClient* c) {
+    msetGenericCommand(c, 0);
 }
 
-void msetnxCommand(redisClient *c) {
-    msetGenericCommand(c,1);
+void msetnxCommand(redisClient* c) {
+    msetGenericCommand(c, 1);
 }
+
+#pragma endregion
 
 void incrDecrCommand(redisClient *c, long long incr) {
     long long value, oldvalue;

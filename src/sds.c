@@ -28,6 +28,27 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*cc:
+sds类、sdshdr类 存在的意义：相当于用char*的方式，重新实现了string类。目的是为了兼容C语言。可以把它理解成C#里面能存字符串且具有丰富方法的string类。
+
+实现：
+sdshdr 里有个char* buffer属性用于真正存储字符串内容；另外两个属性len、free保存buffer的使用情况。
+sds类是char*的别名，直接指向char* buffer，就是说用它可以直接就能访问到业务数据；但是究竟业务数据的长度是多少呢，还是要向前追溯到sdshdr.len的值，来获取字符串长度。
+可以理解为 sdshdr是sds的元数据信息。保存了指向业务数据的指针、业务数据长度
+
+另外，sdshdr还有其他一些方法，用于支持字符串操作。比如：
+sds sdsnew(const char *init) ： 新建一个参数指定的新的字符串。
+sds sdsempty(void)： 清空sdshdr.buffer
+size_t sdslen(const sds s)： 获取字符串长度，相当于 string.Length
+sds sdsdup(const sds s)： 按照参数s复制字符串（深拷贝）
+size_t sdsavail(const sds s);
+sds sdsgrowzero(sds s, size_t len)：将 sds 扩充至指定长度，未使用的空间以 0 字节填充。
+sds sdscatlen(sds s, const void *t, size_t len)：将长度为 len 的字符串 t 追加到 sds 的字符串末尾
+sds sdscat(sds s, const char *t)
+......
+
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,6 +84,28 @@
  * You can print the string with printf() as there is an implicit \0 at the
  * end of the string. However the string is binary safe and can contain
  * \0 characters in the middle, as the length is stored in the sds header. */
+
+
+
+/*cc:
+前提准备：
+sdshdr 可以理解成一个buffer。这个buffer的一部分空间存了 有效字符串数据，剩余的空间是空白可用的。
+sdshdr.len  代表了 buffer内 有效字符串的长度
+sdshdr.free 代表了 buffer内 还有的可用空间长度
+
+sds类型是 char* 的别名，用于指向 sdshdr.buffer 的开头。 也就是说， *sdshdr + sizeof(sdshdr)，就等于sds。
+
+本函数：
+例如： sdsnewlen("ABC",6)
+那么： 内存新分配的空间为： 36abc\0___
+构造的sdshdr.len=3, sdshdr.free=3, sdshrd.buffer=abc\0___；返回 *sdshdr.buffer指针
+
+相当于C#: 初始化一个长度为initlen的buffer，如果init!=null，就用init给结果赋值
+string result =new string(initlen);
+if(init!=null)
+    result = init; 
+return result;
+*/
 sds sdsnewlen(const void *init, size_t initlen) {
 
     struct sdshdr *sh;
@@ -70,10 +113,13 @@ sds sdsnewlen(const void *init, size_t initlen) {
     // 根据是否有初始化内容，选择适当的内存分配方式
     // T = O(N)
     if (init) {
-        // zmalloc 不初始化所分配的内存
+        // zmalloc 不初始化所分配的内存。 
+        //分配的空间： sdshdr的空间 + 指定大小的空间(参数initlen) + 1(\0)
+        //比如，initlen=3，那么 zmalloc结果就是： size(sdshdr)____
         sh = zmalloc(sizeof(struct sdshdr)+initlen+1);
     } else {
-        // zcalloc 将分配的内存全部初始化为 0
+        // zcalloc 将分配的内存全部初始化为 0。分配空间，并且做初始化。
+        //如果，initlen=3，那么zcalloc结果就是：  size(sdshdr)0000
         sh = zcalloc(sizeof(struct sdshdr)+initlen+1);
     }
 
@@ -111,6 +157,13 @@ sds sdsempty(void) {
     return sdsnewlen("",0);
 }
 
+
+/*cc:
+根据给定字符串，创建一个刚好跟这个字符串相等的新字符串（新开辟内存）
+C#:
+string result =new string("abc");
+return result;
+*/
 /*
  * 根据给定字符串 init ，创建一个包含同样字符串的 sds
  *
