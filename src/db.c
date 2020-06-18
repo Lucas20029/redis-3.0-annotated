@@ -49,21 +49,30 @@ void slotToKeyFlush(void);
 robj *lookupKey(redisDb *db, robj *key) {
 
     // 查找键空间
+    // 找到Key的入口
     dictEntry *de = dictFind(db->dict,key->ptr);
 
     // 节点存在
     if (de) {
         
 
-        // 取出值
-        robj *val = dictGetVal(de);
+        // 取出值： 取出key对应的value的val属性
+        //de->v.val：看一下dictEntry的数据结构： dictEntry.v是一个union，里面有val属性
+        robj *val = dictGetVal(de); 
 
         /* Update the access time for the ageing algorithm.
          * Don't do it if we have a saving child, as this will trigger
          * a copy on write madness. */
         // 更新时间信息（只在不存在子进程时执行，防止破坏 copy-on-write 机制）
+        //CC:
+        //rdb_child_pid：负责RDB的进程
+        //aof_child_pid：负责AOF的进程
+        //二者都为-1，表示现在没有在进行RDB或AOF
         if (server.rdb_child_pid == -1 && server.aof_child_pid == -1)
+            //LRU：Least Recently Used：最近最少使用
+            //这儿记录下来LRU时间。代表本Key在此时间被用过。
             val->lru = LRU_CLOCK();
+        //换句话说：当Redis在进行RDB或AOF时，是不更新Key的LRU的！！！
 
         // 返回值
         return val;
@@ -114,6 +123,7 @@ robj *lookupKeyWrite(redisDb *db, robj *key) {
     expireIfNeeded(db,key);
 
     // 查找并返回 key 的值对象
+    // CC：得到Key对应的入口  并且（隐含逻辑）如果没在RDB或AOF，则更新LRU时间
     return lookupKey(db,key);
 }
 

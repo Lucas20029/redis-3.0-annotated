@@ -29,3 +29,6 @@ deps/lua/src/liblua.a
 *.db
 *.json
 *.sqllite
+*.ipch
+*.testlog
+*.manifest

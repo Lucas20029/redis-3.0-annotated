@@ -1032,6 +1032,9 @@ void activeExpireCycle(int type) {
 }
 
 unsigned int getLRUClock(void) {
+    //mstime：返回单位为ms（毫秒）的UNIX时间戳。
+    //科普UNIX时间戳：用一个Long类型数据，代表 从格林威治时间1970年01月01日00时00分00秒起至现在的总秒数
+    //例如：2020-1-1 12:00:00 的Unix时间戳是：1577851200 （秒），1577851200000（毫秒）
     return (mstime()/REDIS_LRU_CLOCK_RESOLUTION) & REDIS_LRU_CLOCK_MAX;
 }
 

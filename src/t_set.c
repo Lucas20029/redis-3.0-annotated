@@ -47,12 +47,16 @@ void sunionDiffGenericCommand(redisClient *c, robj **setkeys, int setnum, robj *
  */
 robj *setTypeCreate(robj *value) {
 
+    //如果是数字（或者用字符串表示的数字）的话，创建成Intset
     if (isObjectRepresentableAsLongLong(value,NULL) == REDIS_OK)
         return createIntsetObject();
-
+    //创建成HashTable
     return createSetObject();
 }
 
+//CC:
+//SAdd的核心方法。
+//Set有可能存成Hashtable或者intset。在一些条件下，intset会转成hashtable
 /*
  * 多态 add 操作
  *
@@ -409,11 +413,13 @@ void setTypeConvert(robj *setobj, int enc) {
     }
 }
 
+//CC：已注释
 void saddCommand(redisClient *c) {
     robj *set;
     int j, added = 0;
 
     // 取出集合对象
+    //内部会检查key是否expire，再更新Key的LRU时间
     set = lookupKeyWrite(c->db,c->argv[1]);
 
     // 对象不存在，创建一个新的，并将它关联到数据库
@@ -421,7 +427,7 @@ void saddCommand(redisClient *c) {
         set = setTypeCreate(c->argv[2]);
         dbAdd(c->db,c->argv[1],set);
 
-    // 对象存在，检查类型
+    // 对象存在，检查类型是不是集合（Set）。如果不是，返回类型错误
     } else {
         if (set->type != REDIS_SET) {
             addReply(c,shared.wrongtypeerr);
@@ -429,10 +435,13 @@ void saddCommand(redisClient *c) {
         }
     }
 
+    // sadd key member1 member2 member3...
+    // 从第2个元素开始，后面所有的都是sadd的数据。
     // 将所有输入元素添加到集合中
     for (j = 2; j < c->argc; j++) {
         c->argv[j] = tryObjectEncoding(c->argv[j]);
         // 只有元素未存在于集合时，才算一次成功添加
+        //这是SAdd的核心方法。里面展示里Set实际的数据结构：Hashtable或者intset
         if (setTypeAdd(set,c->argv[j])) added++;
     }
 
@@ -456,6 +465,8 @@ void sremCommand(redisClient *c) {
     int j, deleted = 0, keyremoved = 0;
 
     // 取出集合对象
+    //lookupKeyWriteOrReply：查找Key。如果Key不存在，则向客户端写入报错信息。
+    //这里跟sadd里用的lookupKeyWrite不同的是，sadd里面key不存在，则会创建。因此sadd中不能reply错误
     if ((set = lookupKeyWriteOrReply(c,c->argv[1],shared.czero)) == NULL ||
         checkType(c,set,REDIS_SET)) return;
 
@@ -491,7 +502,8 @@ void sremCommand(redisClient *c) {
     // 将被成功删除元素的数量作为回复
     addReplyLongLong(c,deleted);
 }
-
+// SMOVE SOURCE DESTINATION MEMBER 
+//Smove 命令将指定成员 member 元素从 source 集合移动到 destination 集合。 原子操作
 void smoveCommand(redisClient *c) {
     robj *srcset, *dstset, *ele;
 

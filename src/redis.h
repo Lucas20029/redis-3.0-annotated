@@ -168,7 +168,7 @@
 #define REDIS_CMD_ASKING 4096               /* "k" flag */
 
 /* Object types */
-// 对象类型
+// 对象类型。是给用户看的，比如Set、Hash、List
 #define REDIS_STRING 0
 #define REDIS_LIST 1
 #define REDIS_SET 2
@@ -178,7 +178,7 @@
 /* Objects encoding. Some kind of objects like Strings and Hashes can be
  * internally represented in multiple ways. The 'encoding' field of the object
  * is set to one of this fields for this object. */
-// 对象编码
+// 对象编码。是Redis内部用的。比如，Hash可以在内部实现的时候，用 hash table 或者 SkipTable
 #define REDIS_ENCODING_RAW 0     /* Raw representation */
 #define REDIS_ENCODING_INT 1     /* Encoded as integer */
 #define REDIS_ENCODING_HT 2      /* Encoded as hash table */
