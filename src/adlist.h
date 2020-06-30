@@ -34,6 +34,15 @@
 /* Node, List, and Iterator are the only data structures used currently. */
 
 /*
+CC：
+双向链表。每个元素都可以访问其上一个、下一个节点。
+通过整个链表结构list的指针，可以快速访问链表的头、尾节点，以及获取链表的元素数量。
+
+list：是整个链表的类型，有头、尾节点指针，以及元素数量。
+listNode：链表的每个节点的类型。它的值是void*的，不限制具体类型。
+listIter：链表迭代器。遍历的时候用。类似于foreach。通过 listGetIterator 方法，可以根据list获取其迭代器（listIter）
+*/
+/*
  * 双端链表节点
  */
 typedef struct listNode {
@@ -63,14 +72,18 @@ typedef struct listIter {
 } listIter;
 
 /*
- * 双端链表结构
+ * CC：用户用的时候，持有list类型对象，就是持有整个链表了。
+ * 双端链表结构。
  */
 typedef struct list {
 
-    // 表头节点
+    // 链表所包含的节点数量
+    unsigned long len;
+
+    // 表头节点。指向链表的头节点的指针
     listNode *head;
 
-    // 表尾节点
+    // 表尾节点。指向链表尾部节点的指针
     listNode *tail;
 
     // 节点值复制函数
@@ -81,9 +94,6 @@ typedef struct list {
 
     // 节点值对比函数
     int (*match)(void *ptr, void *key);
-
-    // 链表所包含的节点数量
-    unsigned long len;
 
 } list;
 

@@ -39,7 +39,8 @@
  *
  * On error, NULL is returned. Otherwise the pointer to the new list. */
 /*
- * 创建一个新的链表
+CC：
+ * 创建一个新的链表，并对元素做一些初始化
  *
  * 创建成功返回链表，失败返回 NULL 。
  *
@@ -67,7 +68,11 @@ list *listCreate(void)
  *
  * This function can't fail. */
 /*
- * 释放整个链表，以及链表中所有节点
+CC：
+这个方法有参考意义，C是手动管理内存的，数据结构都需要手动释放，回收内存。
+释放是创建的反向操作，创建时以及使用时开辟了哪些空间，释放时就需要删掉哪些空间。
+
+释放链表，就需要先释放链表的所有节点、然后释放整个链表
  *
  * T = O(N)
  */
@@ -81,6 +86,7 @@ void listRelease(list *list)
     // 遍历整个链表
     len = list->len;
     while(len--) {
+        //CC：具体操作时，需要先找个指针持有next节点，然后释放当前节点。断掉就尴尬了
         next = current->next;
 
         // 如果有设置值释放函数，那么调用它
