@@ -29,7 +29,11 @@
  */
 
 /*cc:
-sds类、sdshdr类 存在的意义：相当于用char*的方式，重新实现了string类。目的是为了兼容C语言。可以把它理解成C#里面能存字符串且具有丰富方法的string类。
+sds类、sdshdr类 存在的意义：相当于用char*的方式，重新实现了string类。可以把它理解成C#里面能存字符串且具有丰富方法的string类。
+
+相比C内置的string，sds的好处在于：
+1. 获取string.length时，C的字符串，需要从头遍历到\0，统计字数；SDS可以直接从属性中取
+2. 进行字符串连接（strcat）时，C的字符串需要先malloc两个字符串相加后的足够空间，然后才能调strcat，否则可能覆盖其他内存；SDS的strcat内置了空间检查，不必担心越界
 
 实现：
 sdshdr 里有个char* buffer属性用于真正存储字符串内容；另外两个属性len、free保存buffer的使用情况。

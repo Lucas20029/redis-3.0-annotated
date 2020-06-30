@@ -28,7 +28,9 @@ deps/lua/src/liblua.a
 *.opendb
 *.db
 *.json
-*.sqllite
+*.sqlite
 *.ipch
 *.testlog
 *.manifest
+*.sqllite
+*.suo

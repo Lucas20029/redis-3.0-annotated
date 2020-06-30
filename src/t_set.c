@@ -424,6 +424,7 @@ void saddCommand(redisClient *c) {
 
     // 对象不存在，创建一个新的，并将它关联到数据库
     if (set == NULL) {
+        //内部会根据第1个元素的类型，判断是用intset、还是hashtable的数据结构
         set = setTypeCreate(c->argv[2]);
         dbAdd(c->db,c->argv[1],set);
 
