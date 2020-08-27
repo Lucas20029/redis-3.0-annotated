@@ -1,3 +1,14 @@
+/*
+了解Hash，主要回答以下几个问题：
+1. 基本数据结构是什么？有哪些结构体，画个图
+2. Add操作，怎么计算Hash，插入到Hash表中，整个Hash发生了哪些变化
+3. 负载因子有哪些关键值，起什么作用
+4. Key冲突了，怎么解决的
+3. Rehash 怎么做的
+4. 渐进式Rehash 怎么理解
+5. 
+*/
+
 /* Hash Tables Implementation.
  *
  * This file implements in-memory hash tables with insert/del/replace/find/
@@ -59,21 +70,29 @@
 #define DICT_NOTUSED(V) ((void) V)
 
 /*
- * 哈希表节点
+CC:类的关系：
+用户持有dict控制整个哈希表， dict -> dictht -> dictEntry -> {void *key, void *value}
+dict 用于获取 迭代器、控制rehash
+dictht 代表一个哈希表结构。存储 哈希表大小、sizemask、已存元素数量（可以计算因子）
+dictEntry：哈希表的一个节点，保存指向key、value对象的指针
+*/
+
+/*
+ * 哈希表节点。真正存 key-value 的节点
  */
 typedef struct dictEntry {
     
-    // 键
+    // Key，键 
     void *key;
 
-    // 值
+    //CC： 值。既可以存一个指向Object的指针，也可以存64位int或uint的整数 （union联合体的用法）
     union {
         void *val;
         uint64_t u64;
         int64_t s64;
-    } v;
+    } v; //value 值
 
-    // 指向下个哈希表节点，形成链表
+    //CC： 指向下个哈希表节点，形成链表。用于解决hash冲突
     struct dictEntry *next;
 
 } dictEntry;
@@ -114,7 +133,7 @@ typedef struct dictType {
  */
 typedef struct dictht {
     
-    // 哈希表数组
+    //哈希表。table是一个数组，数组的每一个元素都存了一个指向dictEntry的指针
     dictEntry **table;
 
     // 哈希表大小
@@ -124,7 +143,7 @@ typedef struct dictht {
     // 总是等于 size - 1
     unsigned long sizemask;
 
-    // 该哈希表已有节点的数量
+    //CC： 该哈希表已有节点的数量。注意是已有，比如hashtable大小为100，已经存了9个元素，那么used=9
     unsigned long used;
 
 } dictht;
@@ -140,7 +159,7 @@ typedef struct dict {
     // 私有数据
     void *privdata;
 
-    // 哈希表
+    // 哈希表数组，存2个哈希表元素，一个用于日常保存数据，另一个用于rehash
     dictht ht[2];
 
     // rehash 索引

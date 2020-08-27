@@ -52,9 +52,21 @@
  * for Redis, as we use copy-on-write and don't want to move too much memory
  * around when there is a child performing saving operations.
  *
+ * CC：这段作者硬翻译的，不准确，看下面的一段
  * 通过 dictEnableResize() 和 dictDisableResize() 两个函数，
  * 程序可以手动地允许或阻止哈希表进行 rehash ，
  * 这在 Redis 使用子进程进行保存操作时，可以有效地利用 copy-on-write 机制。
+ *
+ * CC： 这是准确的
+ * 根据 BGSAVE 命令或 BGREWRITEAOF 命令是否正在执行（是否正在进行RDB）， Redis服务端执行rehash（扩展操作）所需的负载因子并不相同。
+ * 这是因为在执行 BGSAVE 命令或 BGREWRITEAOF 命令的过程中， Redis 需要创建当前服务器进程的子进程，
+ * 而大多数操作系统都采用写时复制（copy-on-write）技术来优化子进程的使用效率， 
+ * 所以在子进程存在期间， 服务器会提高执行扩展操作所需的负载因子（1->5）， 
+ * 从而尽可能地避免在子进程存在期间进行哈希表扩展操作， 这可以避免不必要的内存写入操作， 最大限度地节约内存。
+ * CC：我理解的大白话就是：
+ * 在正常情况下，负载因子=1，就触发 rehash
+ * 在RDB（BGSAVE、BGREWRITEOF）时，负载因子=5，才会触发 rehash。
+ * 为了最大程度 避免 Copy-On-Write 造成的 内存复制
  *
  * Note that even when dict_can_resize is set to 0, not all resizes are
  * prevented: a hash table is still allowed to grow if the ratio between
@@ -107,6 +119,7 @@ uint32_t dictGetHashFunctionSeed(void) {
     return dict_hash_function_seed;
 }
 
+//CC：一个好的Hash的判断标准：速度快，冲突少
 /* MurmurHash2, by Austin Appleby
  * Note - This code makes a few assumptions about how your machine behaves -
  * 1. We can read a 4-byte value from any address without crashing
@@ -135,7 +148,7 @@ unsigned int dictGenHashFunction(const void *key, int len) {
         uint32_t k = *(uint32_t*)data;
 
         k *= m;
-        k ^= k >> r;
+        k ^= k >> r; //CC：^按位或运算。 比如 001 ^ 100 = 101， >>r 右移r位
         k *= m;
 
         h *= m;
@@ -348,19 +361,17 @@ int dictExpand(dict *d, unsigned long size)
  * 注意，每步 rehash 都是以一个哈希表索引（桶）作为单位的，
  * 一个桶里可能会有多个节点，
  * 被 rehash 的桶里的所有节点都会被移动到新哈希表。
+ * 参数n，即每次把n个桶，以及桶内的链表 搬到新的hash表中
  *
  * T = O(N)
  */
 int dictRehash(dict *d, int n) {
-
     // 只可以在 rehash 进行中时执行
     if (!dictIsRehashing(d)) return 0;
-
     // 进行 N 步迁移
     // T = O(N)
     while(n--) {
         dictEntry *de, *nextde;
-
         /* Check if we already rehashed the whole table... */
         // 如果 0 号哈希表为空，那么表示 rehash 执行完毕
         // T = O(1)
@@ -376,15 +387,9 @@ int dictRehash(dict *d, int n) {
             // 返回 0 ，向调用者表示 rehash 已经完成
             return 0;
         }
-
-        /* Note that rehashidx can't overflow as we are sure there are more
-         * elements because ht[0].used != 0 */
-        // 确保 rehashidx 没有越界
         assert(d->ht[0].size > (unsigned)d->rehashidx);
-
         // 略过数组中为空的索引，找到下一个非空索引
         while(d->ht[0].table[d->rehashidx] == NULL) d->rehashidx++;
-
         // 指向该索引的链表表头节点
         de = d->ht[0].table[d->rehashidx];
         /* Move all the keys in this bucket from the old to the new hash HT */
@@ -392,22 +397,17 @@ int dictRehash(dict *d, int n) {
         // T = O(1)
         while(de) {
             unsigned int h;
-
             // 保存下个节点的指针
             nextde = de->next;
-
             /* Get the index in the new hash table */
             // 计算新哈希表的哈希值，以及节点插入的索引位置
             h = dictHashKey(d, de->key) & d->ht[1].sizemask;
-
             // 插入节点到新哈希表
             de->next = d->ht[1].table[h];
             d->ht[1].table[h] = de;
-
             // 更新计数器
             d->ht[0].used--;
             d->ht[1].used++;
-
             // 继续处理下个节点
             de = nextde;
         }
@@ -416,7 +416,6 @@ int dictRehash(dict *d, int n) {
         // 更新 rehash 索引
         d->rehashidx++;
     }
-
     return 1;
 }
 
@@ -533,22 +532,21 @@ dictEntry *dictAddRaw(dict *d, void *key)
     dictEntry *entry;
     dictht *ht;
 
-    // 如果条件允许的话，进行单步 rehash
-    // T = O(1)
+    //单步Rehash： T = O(1)
     if (dictIsRehashing(d)) _dictRehashStep(d);
 
     /* Get the index of the new element, or -1 if
      * the element already exists. */
-    // 计算键在哈希表中的索引值
-    // 如果值为 -1 ，那么表示键已经存在
+    // 计算Key在哈希表中的索引值
+    // 如果值为 -1 ，那么表示Key已经存在。内部会计算是否需要Rehash，从而修改 rehashidx
     // T = O(N)
     if ((index = _dictKeyIndex(d, key)) == -1)
         return NULL;
 
     // T = O(1)
     /* Allocate the memory and store the new entry */
-    // 如果字典正在 rehash ，那么将新键添加到 1 号哈希表
-    // 否则，将新键添加到 0 号哈希表
+    // 如果字典正在 rehash ，那么将新Key添加到 1 号哈希表
+    // 否则，将新Key添加到 0 号哈希表
     ht = dictIsRehashing(d) ? &d->ht[1] : &d->ht[0];
     // 为新节点分配空间
     entry = zmalloc(sizeof(*entry));
@@ -559,7 +557,7 @@ dictEntry *dictAddRaw(dict *d, void *key)
     ht->used++;
 
     /* Set the hash entry fields. */
-    // 设置新节点的键
+    // 设置新节点的Key
     // T = O(1)
     dictSetKey(d, entry, key);
 

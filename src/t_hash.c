@@ -54,7 +54,7 @@ void hashTypeTryConversion(robj *o, robj **argv, int start, int end) {
     // 检查所有输入对象，看它们的字符串值是否超过了指定长度
     for (i = start; i <= end; i++) {
         if (sdsEncodedObject(argv[i]) &&
-            sdslen(argv[i]->ptr) > server.hash_max_ziplist_value)
+            sdslen(argv[i]->ptr) > server.hash_max_ziplist_value) //默认是64.可以 Ctrl+F 搜一下
         {
             // 将对象的编码转换成 REDIS_ENCODING_HT
             hashTypeConvert(o, REDIS_ENCODING_HT);
@@ -707,9 +707,11 @@ void hsetCommand(redisClient *c) {
     robj *o;
 
     // 取出或新创建哈希对象
+    //CC：在 RedisClient c.RedisDB.dict 中，查到该Key
     if ((o = hashTypeLookupWriteOrCreate(c,c->argv[1])) == NULL) return;
 
-    // 如果需要的话，转换哈希对象的编码
+    // 如果需要的话(输入的key是否超过了64位长度)，转换哈希对象的编码
+    // 初试存储方式为 ZipList
     hashTypeTryConversion(o,c->argv,2,3);
 
     // 编码 field 和 value 对象以节约空间

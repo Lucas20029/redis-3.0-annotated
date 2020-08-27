@@ -126,7 +126,8 @@ typedef struct aeTimeEvent {
     // 事件释放函数
     aeEventFinalizerProc *finalizerProc;
 
-    // 多路复用库的私有数据
+    // 多路复用库的私有数据。
+    //CC: 在时间轮转框架调用时间事件的点上，才会用到这个数据。可以通过它的引用，反查到所有可能的调用点
     void *clientData;
 
     // 指向下个时间事件结构，形成链表
@@ -162,7 +163,7 @@ typedef struct aeEventLoop {
     // 目前已追踪的最大描述符
     int setsize; /* max number of file descriptors tracked */
 
-    // 用于生成时间事件 id
+    // 用于生成时间事件 id。这个ID是按1自增的，存储了下一个时间事件的ID。同时，它也可以用于验证时间事件ID是否合法（合法的ID都必须要比它小）
     long long timeEventNextId;
 
     // 最后一次执行时间事件的时间

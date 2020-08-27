@@ -241,19 +241,24 @@ int aeGetFileEvents(aeEventLoop *eventLoop, int fd) {
  * 取出当前时间的秒和毫秒，
  * 并分别将它们保存到 seconds 和 milliseconds 参数中
  */
+//CC:输出结果: seconds:1598353412, milliseconds:335
 static void aeGetTime(long *seconds, long *milliseconds)
 {
     struct timeval tv;
 
+    //CC: C语言的系统函数，获取自1970-1-1到现在的 sec秒数、usec微秒数，存到&tv里面
     gettimeofday(&tv, NULL);
-    *seconds = tv.tv_sec;
-    *milliseconds = tv.tv_usec/1000;
+    *seconds = tv.tv_sec;//CC：自1970-1-1到现在的秒数
+    *milliseconds = tv.tv_usec/1000; //CC： 微秒/1000 = 毫秒
 }
 
 /*
  * 在当前时间上加上 milliseconds 毫秒，
  * 并且将加上之后的秒数和毫秒数分别保存在 sec 和 ms 指针中。
  */
+//CC:相当于 C#代码： DateTime.Now.AddMilSeconds(milliseconds)
+//例如： milliseconds =1010， 当前Unix时间戳为： seconds:1598353412, milSeconds:335
+//那么，输出 sec = 1598353413, milSeconds = 345
 static void aeAddMillisecondsToNow(long long milliseconds, long *sec, long *ms) {
     long cur_sec, cur_ms, when_sec, when_ms;
 
@@ -280,6 +285,8 @@ static void aeAddMillisecondsToNow(long long milliseconds, long *sec, long *ms) 
 /*
  * 创建时间事件
  */
+//CC：实际使用中， proc 是传的 serverCron，就是每次定时任务触发时，都要做的事情
+//但是这个方法并没有触发 proc 方法，只是赋值给了 aeTimeEvent， 然后 aeTimeEvent 被放到了 参数eventLoop 中（实际调用时，这个eventLoop传的时 server.el，可能是真正触发循环执行的）
 long long aeCreateTimeEvent(aeEventLoop *eventLoop, long long milliseconds,
         aeTimeProc *proc, void *clientData,
         aeEventFinalizerProc *finalizerProc)
@@ -296,7 +303,7 @@ long long aeCreateTimeEvent(aeEventLoop *eventLoop, long long milliseconds,
     // 设置 ID
     te->id = id;
 
-    // 设定处理事件的时间
+    // 设定处理事件的时间。计算 Now+milliSeconds 的时间戳。 相当于C#: DateTime.Now.AddMilSeconds(milliseconds)
     aeAddMillisecondsToNow(milliseconds,&te->when_sec,&te->when_ms);
     // 设置事件处理器
     te->timeProc = proc;
@@ -394,6 +401,11 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
      * indefinitely, and practice suggests it is. */
     // 通过重置事件的运行时间，
     // 防止因时间穿插（skew）而造成的事件处理混乱
+    //CC:这里是为了处理一种非常特殊的情况：
+    //比如，当前时间是2020-1-1 10:00，但是诡异的发现，lastTime（记录上次运行时间）是2020-1-1 11:00（未来曾经执行过），而在三维空间，这是不可能的！
+    //那么，唯一合理的解释就是，用户曾经修改过系统时间。（比如曾经让系统时间提前了2小时，然后redis又在 真实的9:00（错误时间11:00）执行，只是由于时钟错误，导致LastTime是11:00。
+    //这就是所谓时间穿插（Time Skew）。在设计定时任务系统的时候，是必须要考虑这种特殊情况的。Redis认为，让事件提前执行 好过 把它们延后到不确定的时间点执行
+    //发现这种情况后，REdis的做法是，把 所有的时间事件都重置为0，让它们立刻运行。
     if (now < eventLoop->lastTime) {
         te = eventLoop->timeEventHead;
         while(te) {
@@ -401,18 +413,19 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
             te = te->next;
         }
     }
-    // 更新最后一次处理时间事件的时间
+    //CC： 记录最后一次处理时间事件的时间
     eventLoop->lastTime = now;
 
     // 遍历链表
     // 执行那些已经到达的事件
     te = eventLoop->timeEventHead;
+    //timeEventNextId是下一个要生成的时间事件ID，它是按1自增的。因此，所有合法的时间事件ID，都必须要小于等于它
     maxId = eventLoop->timeEventNextId-1;
     while(te) {
         long now_sec, now_ms;
         long long id;
 
-        // 跳过无效事件
+        // 跳过无效事件id。防御性检查，代码没bug的话，不会出现这种情况
         if (te->id > maxId) {
             te = te->next;
             continue;
@@ -429,7 +442,7 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
 
             id = te->id;
             // 执行事件处理器，并获取返回值
-            retval = te->timeProc(eventLoop, id, te->clientData);
+            retval = te->timeProc(eventLoop, id, te->clientData);//CC：真实调用时间事件函数的地方
             processed++;
             /* After an event is processed our time event list may
              * no longer be the same, so we restart from head.
@@ -445,7 +458,8 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
              * deletion (putting references to the nodes to delete into
              * another linked list). */
 
-            // 记录是否有需要循环执行这个事件时间
+            //CC： 判断 这个时间事件是不断循环执行的，还是一次性的。retval是用户回调函数返回的每次执行间隔，由用户函数决定
+            //记录是否有需要循环执行这个事件时间
             if (retval != AE_NOMORE) {
                 // 是的， retval 毫秒之后继续执行这个时间事件
                 aeAddMillisecondsToNow(retval,&te->when_sec,&te->when_ms);
@@ -454,8 +468,8 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
                 aeDeleteTimeEvent(eventLoop, id);
             }
 
-            // 因为执行事件之后，事件列表可能已经被改变了
-            // 因此需要将 te 放回表头，继续开始执行事件
+            // CC：因为执行事件也消耗了一定时间，因此需要将 te 指回表头，重新遍历timeEvent链表
+            //可能存在风险，就是如果有耗时的timeEvent，会导致redis一直在执行 timeEvent，而无法响应 用户请求（FileEvent）
             te = eventLoop->timeEventHead;
         } else {
             te = te->next;
@@ -556,6 +570,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
             }
         }
 
+        //CC：在下面的函数内，调用了select系统函数，select内置阻塞tvp时间。也就是所谓的sleep
         // 处理文件事件，阻塞时间由 tvp 决定
         numevents = aeApiPoll(eventLoop, tvp);
         for (j = 0; j < numevents; j++) {
@@ -570,15 +585,15 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
              * event removed an element that fired and we still didn't
              * processed, so we check if the event is still valid. */
             // 读事件
-            if (fe->mask & mask & AE_READABLE) {
+            if (fe->mask & mask & AE_READABLE) { //如果是可读的
                 // rfired 确保读/写事件只能执行其中一个
                 rfired = 1;
-                fe->rfileProc(eventLoop,fd,fe->clientData,mask);
+                fe->rfileProc(eventLoop,fd,fe->clientData,mask); //调用 rfileProc，真正的执行 要触发的 Proc
             }
             // 写事件
             if (fe->mask & mask & AE_WRITABLE) {
                 if (!rfired || fe->wfileProc != fe->rfileProc)
-                    fe->wfileProc(eventLoop,fd,fe->clientData,mask);
+                    fe->wfileProc(eventLoop,fd,fe->clientData,mask);//调用 wfileProc，真正的执行 要触发的 Proc
             }
 
             processed++;

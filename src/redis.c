@@ -177,6 +177,7 @@ struct redisCommand *commandTable;
  *    为这个命令执行一个显式的 ASKING ，
  *    使得在集群模式下，一个被标示为 importing 的槽可以接收这命令。
  */
+//CC：可以在这里查询命令的入口
 struct redisCommand redisCommandTable[] = {
     {"get",getCommand,2,"r",0,NULL,1,1,1,0,0},
     {"set",setCommand,-3,"wm",0,NULL,1,1,1,0,0},
@@ -1030,7 +1031,7 @@ void activeExpireCycle(int type) {
         } while (expired > ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP/4);
     }
 }
-
+//CC:这个方法返回
 unsigned int getLRUClock(void) {
     //mstime：返回单位为ms（毫秒）的UNIX时间戳。
     //科普UNIX时间戳：用一个Long类型数据，代表 从格林威治时间1970年01月01日00时00分00秒起至现在的总秒数
@@ -2151,6 +2152,8 @@ void initServer() {
     /* Create the serverCron() time event, that's our main way to process
      * background operations. */
     // 为 serverCron() 创建时间事件
+    //可以看一下 server.el。 el是eventLoop的意思，它里面记录了server的 文件事件、时间事件等。每个事件节点都有next指针，形成链表；server.el持有每个链表的头节点
+    //在本代码文件的最后（大约4085行），在main函数末尾有：aeMain(server.el); 该方法里面有个while循环，启动了整个事件循环
     if(aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL) == AE_ERR) {
         redisPanic("Can't create the serverCron time event.");
         exit(1);
@@ -3932,7 +3935,7 @@ void redisSetProcTitle(char *title) {
     REDIS_NOTUSED(title);
 #endif
 }
-
+//CC：整个程序的入口：Main函数！！！！！
 int main(int argc, char **argv) {
     struct timeval tv;
 

@@ -297,7 +297,7 @@
 #define REDIS_LOG_RAW (1<<10) /* Modifier to log without timestamp */
 #define REDIS_DEFAULT_VERBOSITY REDIS_NOTICE
 
-/* Anti-warning macro... */
+/* Anti-warning macro... */ /*CC：这个宏没啥用，只是为了防止编译器报警：有未使用的变量*/
 #define REDIS_NOTUSED(V) ((void) V)
 
 #define ZSKIPLIST_MAXLEVEL 32 /* Should be enough for 2^32 elements */
@@ -450,6 +450,9 @@ struct evictionPoolEntry {
 /* Redis database representation. There are multiple databases identified
  * by integers from 0 (the default database) up to the max configured
  * database. The database number is the 'id' field in the structure. */
+//CC: 这是Redis最核心的类。代表了当前单机的Redis数据库。
+//可以看到Redis里面所有的Key-Value都是存到了它定义的Dict类型中了
+//每个Key对应的过期时间，也是存到了自定义的Dict类型中。用于快速查询出当前Key是否过期
 typedef struct redisDb {
 
     // 数据库键空间，保存着数据库中的所有键值对
