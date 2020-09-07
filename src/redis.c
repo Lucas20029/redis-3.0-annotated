@@ -855,6 +855,9 @@ int activeExpireCycleTryExpire(redisDb *db, dictEntry *de, long long now) {
  * 这个百分比由 REDIS_EXPIRELOOKUPS_TIME_PERC 定义。
  */
 
+//CC:执行清理过期Key的运行模式有两种
+//1. 快速模式（ACTIVE_EXPIRE_CYCLE_FAST）：
+//2. 慢速模式（ACTIVE_EXPIRE_CYCLE_SLOW）
 void activeExpireCycle(int type) {
     /* This function has some global state in order to continue the work
      * incrementally across calls. */
@@ -865,7 +868,7 @@ void activeExpireCycle(int type) {
 
     unsigned int j, iteration = 0;
     // 默认每次处理的数据库数量
-    unsigned int dbs_per_call = REDIS_DBCRON_DBS_PER_CALL;
+    unsigned int dbs_per_call = REDIS_DBCRON_DBS_PER_CALL;//16
     // 函数开始的时间
     long long start = ustime(), timelimit;
 
@@ -903,15 +906,17 @@ void activeExpireCycle(int type) {
      * per iteration. Since this function gets called with a frequency of
      * server.hz times per second, the following is the max amount of
      * microseconds we can spend in this function. */
-    // 函数处理的微秒时间上限
-    // ACTIVE_EXPIRE_CYCLE_SLOW_TIME_PERC 默认为 25 ，也即是 25 % 的 CPU 时间
-    timelimit = 1000000*ACTIVE_EXPIRE_CYCLE_SLOW_TIME_PERC/server.hz/100;
+    //CC： 慢速模式：计算函数处理的微秒时间上限
+    //ACTIVE_EXPIRE_CYCLE_SLOW_TIME_PERC 默认为 25 ，
+    //ACTIVE_EXPIRE_CYCLE_SLOW_TIME_PERC/100 是百分比，即20%；1000000意思是1秒中有这么多微秒；hz：每秒多少次
+    //整个公式的意思， 首先 用户设定 hz，比如10，就是每秒运行10次 时间事件。那么，每次时间事件的最长执行时间就是 1000000/10 = 100000微秒。
+    //而，设定 处理过期key只能最多占到serverCron的25%的时间，也就是 25% * 100000 = 25000微秒。
+    //因此，处理过期key的最长时间就是 25000 微秒，再多，就会导致 达不到 server.hz 的频率要求了。
+    timelimit = 1000000*ACTIVE_EXPIRE_CYCLE_SLOW_TIME_PERC/server.hz/100;    
     timelimit_exit = 0;
     if (timelimit <= 0) timelimit = 1;
 
-    // 如果是运行在快速模式之下
-    // 那么最多只能运行 FAST_DURATION 微秒 
-    // 默认值为 1000 （微秒）
+    // 如果是运行在快速模式之下， 那么最多只能运行 FAST_DURATION 微秒，默认值为 1000 （微秒）
     if (type == ACTIVE_EXPIRE_CYCLE_FAST)
         timelimit = ACTIVE_EXPIRE_CYCLE_FAST_DURATION; /* in microseconds. */
 
@@ -943,17 +948,18 @@ void activeExpireCycle(int type) {
                 break;
             }
             // 获取数据库中键值对的数量
-            slots = dictSlots(db->expires);
+            slots = dictSlots(db->expires); //定义的宏，计算 dt[0].size + dt[1].size （考虑rehash中的情况）
             // 当前时间
             now = mstime();
+
 
             /* When there are less than 1% filled slots getting random
              * keys is expensive, so stop here waiting for better times...
              * The dictionary will be resized asap. */
             // 这个数据库的使用率低于 1% ，扫描起来太费力了（大部分都会 MISS）
             // 跳过，等待字典收缩程序运行
-            if (num && slots > DICT_HT_INITIAL_SIZE &&
-                (num*100/slots < 1)) break;
+            if (num && slots > DICT_HT_INITIAL_SIZE && (num*100/slots < 1)) 
+                break;
 
             /* The main collection cycle. Sample random keys among keys
              * with an expire set, checking for expired ones. 
@@ -967,7 +973,7 @@ void activeExpireCycle(int type) {
             // 总共处理的键计数器
             ttl_samples = 0;
 
-            // 每次最多只能检查 LOOKUPS_PER_LOOP 个键
+            //CC：设定每次检查的上限。 每次最多只能删除 LOOKUPS_PER_LOOP /4 个键
             if (num > ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP)
                 num = ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP;
 
@@ -1256,6 +1262,7 @@ void databasesCron(void) {
             resize_db++;
         }
 
+
         /* Rehash */
         // 对字典进行渐进式 rehash
         if (server.activerehashing) {
@@ -1325,6 +1332,9 @@ void updateCachedTime(void) {
  * 这个宏可以将被包含代码的执行次数降低为每 milliseconds 执行一次。
  */
 
+//CC:该函数的返回值，始终是 1000/server.hz。代表的意思是，每间隔XX毫秒，运行一次该函数
+//比如， server.hz = 5，意思是 5赫兹，意思是 每秒运行5次，意思是 每间隔200ms运行一次
+//外部的 aeTimeEvent.Proc 会根据该函数的返回值，计算下一次运行该函数的时间（when_sec，when_msec）
 int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     int j;
     REDIS_NOTUSED(eventLoop);
