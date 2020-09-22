@@ -273,10 +273,11 @@ void *bioProcessBackgroundJobs(void *arg) {
 unsigned long long bioPendingJobsOfType(int type) {
     unsigned long long val;
 
+    //加 互斥锁，类似于C#的 Lock{
     pthread_mutex_lock(&bio_mutex[type]);
     val = bio_pending[type];
-    pthread_mutex_unlock(&bio_mutex[type]);
-
+    pthread_mutex_unlock(&bio_mutex[type]);//释放 互斥锁
+    //}
     return val;
 }
 

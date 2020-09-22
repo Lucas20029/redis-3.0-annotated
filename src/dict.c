@@ -78,6 +78,7 @@
  * 那么 rehash 仍然会（强制）进行。
  */
 // 指示字典是否启用 rehash 的标识
+//CC：当redis在执行RDB时，此变量会=0，disable
 static int dict_can_resize = 1;
 // 强制 rehash 的比率
 static unsigned int dict_force_resize_ratio = 5;

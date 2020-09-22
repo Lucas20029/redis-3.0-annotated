@@ -1091,7 +1091,8 @@ struct redisServer {
     /* RDB persistence */
 
     // 自从上次 SAVE 执行以来，数据库被修改的次数
-    long long dirty;                /* Changes to DB from the last save */
+    //CC：用于判断RDB是否需要执行
+    long long dirty;                /* Changes to DB from the last save */  
 
     // BGSAVE 执行前的数据库被修改次数
     long long dirty_before_bgsave;  /* Used to restore dirty on failed BGSAVE */
@@ -1099,8 +1100,10 @@ struct redisServer {
     // 负责执行 BGSAVE 的子进程的 ID
     // 没在执行 BGSAVE 时，设为 -1
     pid_t rdb_child_pid;            /* PID of RDB saving child */
-    struct saveparam *saveparams;   /* Save points array for RDB */
-    int saveparamslen;              /* Number of saving points */
+    //CC：保存RDB触发时机的数组。比如：900秒内发生1次修改
+    struct saveparam *saveparams;   /* Save points array for RDB */ 
+    //CC：记录saveparam数组长度
+    int saveparamslen;              /* Number of saving points */ 
     char *rdb_filename;             /* Name of RDB file */
     int rdb_compression;            /* Use compression in RDB? */
     int rdb_checksum;               /* Use RDB checksum? */

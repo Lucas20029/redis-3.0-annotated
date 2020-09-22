@@ -912,11 +912,13 @@ void activeExpireCycle(int type) {
     //整个公式的意思， 首先 用户设定 hz，比如10，就是每秒运行10次 时间事件。那么，每次时间事件的最长执行时间就是 1000000/10 = 100000微秒。
     //而，设定 处理过期key只能最多占到serverCron的25%的时间，也就是 25% * 100000 = 25000微秒。
     //因此，处理过期key的最长时间就是 25000 微秒，再多，就会导致 达不到 server.hz 的频率要求了。
+    
+    //ACTIVE_EXPIRE_CYCLE_SLOW 模式
     timelimit = 1000000*ACTIVE_EXPIRE_CYCLE_SLOW_TIME_PERC/server.hz/100;    
     timelimit_exit = 0;
     if (timelimit <= 0) timelimit = 1;
 
-    // 如果是运行在快速模式之下， 那么最多只能运行 FAST_DURATION 微秒，默认值为 1000 （微秒）
+    //ACTIVE_EXPIRE_CYCLE_FAST 模式
     if (type == ACTIVE_EXPIRE_CYCLE_FAST)
         timelimit = ACTIVE_EXPIRE_CYCLE_FAST_DURATION; /* in microseconds. */
 
@@ -943,12 +945,12 @@ void activeExpireCycle(int type) {
             /* If there is nothing to expire try next DB ASAP. */
             // 获取数据库中带过期时间的键的数量
             // 如果该数量为 0 ，直接跳过这个数据库
-            if ((num = dictSize(db->expires)) == 0) {
+            if ((num = dictSize(db->expires)) == 0) {  // dictSize: ht[0].used + ht[1].used
                 db->avg_ttl = 0;
                 break;
             }
             // 获取数据库中键值对的数量
-            slots = dictSlots(db->expires); //定义的宏，计算 dt[0].size + dt[1].size （考虑rehash中的情况）
+            slots = dictSlots(db->expires); //定义的宏，计算 dt[0].size + dt[1].size （考虑rehash中的情况） 
             // 当前时间
             now = mstime();
 
@@ -1233,7 +1235,7 @@ void databasesCron(void) {
 
     /* Expire keys by random sampling. Not required for slaves
      * as master will synthesize DELs for us. */
-    // 如果服务器不是从服务器，那么执行主动过期键清除
+    //只有Master服务器执行定期删除，Slaves不执行。因为Master会同步del命令到Slaves
     if (server.active_expire_enabled && server.masterhost == NULL)
         // 清除模式为 CYCLE_SLOW ，这个模式会尽量多清除过期键
         activeExpireCycle(ACTIVE_EXPIRE_CYCLE_SLOW);
@@ -1449,6 +1451,12 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         int statloc;
         pid_t pid;
 
+        //CC:检查是否有子进程执行完 RDB 或 RewriteAOF 了
+        //系统函数：wait3 
+        //   当一个进程正常或异常终止时，内核就向其父进程发送SIGCHLD信号。
+        //   因为子进程终止是个异步事件(这可以在父进程运行的任何时候发生)，所以这种信号也是内核向父进程发的异步通知。
+        //   父进程可以忽略该信号，或者提供一个该信号发生时即被调用执行的函数(信号处理程序)。对于这种信号的系统默认动作是忽略它
+        //   当父进程接收到子进程发来的SIGCHLD信号时，可调用wait、waitpid、wait3、wait4函数来接受子进程的终止状态。区别在于返回信息的多少，wait4返回最多，其次是wait3
         // 接收子进程发来的信号，非阻塞
         if ((pid = wait3(&statloc,WNOHANG,NULL)) != 0) {
             int exitcode = WEXITSTATUS(statloc);
@@ -1501,7 +1509,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
          }
 
          /* Trigger an AOF rewrite if needed */
-        // 出发 BGREWRITEAOF
+        // 触发 BGREWRITEAOF
          if (server.rdb_child_pid == -1 &&
              server.aof_child_pid == -1 &&
              server.aof_rewrite_perc &&

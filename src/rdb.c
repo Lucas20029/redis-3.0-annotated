@@ -1080,7 +1080,26 @@ int rdbSaveBackground(char *filename) {
     // fork() 开始前的时间，记录 fork() 返回耗时用
     start = ustime();
 
-    if ((childpid = fork()) == 0) {
+    //CC：fork是Linux的系统调用。可以百度【fork】
+    //它可以 复刻一个当前进程作为子进程，这两个进程一模一样，共享相同的代码，都从fork后的语句向后执行。fork会“返回2次”，一次把返回值给父进程，一次把返回值给子进程。
+    //不同的是:
+    // 1. fork函数 在子进程中返回0；在父进程中fork返回子进程id。
+    // 2. 父子进程【不共享】资源（堆、栈、数据空间），子进程持有的是父进程资源的“副本”。
+    //    当父进程修改内存时，操作系统会复制出该内存的分页，这就是Linux的CopyOnWrite机制！！
+    /*如下是fork函数的标准写法：
+    int pid =fork();
+    if(pid ==0){
+      //子进程代码
+    }
+    else if(pid>0){
+      //父进程代码
+    } 
+    else{
+      //处理创建失败的代码
+    }
+    */
+
+    if ((childpid = fork()) == 0) { //内部是子进程代码
         int retval;
 
         /* Child */
@@ -1108,7 +1127,7 @@ int rdbSaveBackground(char *filename) {
         // 向父进程发送信号
         exitFromChild((retval == REDIS_OK) ? 0 : 1);
 
-    } else {
+    } else { //内部是父进程代码，或者创建进程失败的代码
 
         /* Parent */
 
