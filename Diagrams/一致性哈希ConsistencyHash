@@ -1,9 +1,15 @@
-<mxfile host="app.diagrams.net" modified="2020-09-28T07:34:29.527Z" agent="5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.113 Safari/537.36" etag="ud42F8J-xiMdTVPa8YLR" version="13.7.3" type="github">
+<mxfile host="app.diagrams.net" modified="2020-09-28T07:42:38.827Z" agent="5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.113 Safari/537.36" etag="UC7zOgWPWqO8WltIOfgy" version="13.7.3" type="github">
   <diagram id="jgSVCJ5Nnc7dwD1DkTke" name="Page-1">
     <mxGraphModel dx="1185" dy="699" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="2336" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
+        <mxCell id="q3_zZPwqO2UvvyeA4TtY-69" value="" style="endArrow=classic;html=1;strokeWidth=2;fontSize=8;fillColor=#d5e8d4;strokeColor=#82b366;" edge="1" parent="1">
+          <mxGeometry width="50" height="50" relative="1" as="geometry">
+            <mxPoint x="231.7" y="500" as="sourcePoint" />
+            <mxPoint x="250" y="610" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
         <mxCell id="q3_zZPwqO2UvvyeA4TtY-1" value="" style="endArrow=none;html=1;jumpStyle=arc;strokeWidth=2;" edge="1" parent="1">
           <mxGeometry width="50" height="50" relative="1" as="geometry">
             <mxPoint x="160" y="360" as="sourcePoint" />
@@ -126,7 +132,7 @@
           </mxGeometry>
         </mxCell>
         <mxCell id="q3_zZPwqO2UvvyeA4TtY-35" value="新增1个节点：" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;fontSize=8;" vertex="1" parent="1">
-          <mxGeometry x="35" y="616" width="90" height="20" as="geometry" />
+          <mxGeometry x="20" y="529" width="90" height="20" as="geometry" />
         </mxCell>
         <mxCell id="q3_zZPwqO2UvvyeA4TtY-36" value="" style="endArrow=none;html=1;jumpStyle=arc;strokeWidth=2;" edge="1" parent="1">
           <mxGeometry width="50" height="50" relative="1" as="geometry">
@@ -209,18 +215,6 @@
         <mxCell id="q3_zZPwqO2UvvyeA4TtY-55" value="Node 3" style="points=[];aspect=fixed;html=1;align=center;shadow=0;dashed=0;image;image=img/lib/allied_telesis/computer_and_terminals/Server_Desktop.svg;fontSize=8;" vertex="1" parent="1">
           <mxGeometry x="440.7" y="692" width="42.599999999999994" height="54" as="geometry" />
         </mxCell>
-        <mxCell id="q3_zZPwqO2UvvyeA4TtY-56" value="" style="endArrow=classic;html=1;strokeWidth=2;fontSize=8;fillColor=#d5e8d4;strokeColor=#82b366;" edge="1" parent="1">
-          <mxGeometry width="50" height="50" relative="1" as="geometry">
-            <mxPoint x="341.5" y="640" as="sourcePoint" />
-            <mxPoint x="341.5" y="680" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="q3_zZPwqO2UvvyeA4TtY-57" value="" style="endArrow=classic;html=1;strokeWidth=2;fontSize=8;fillColor=#dae8fc;strokeColor=#6c8ebf;" edge="1" parent="1">
-          <mxGeometry width="50" height="50" relative="1" as="geometry">
-            <mxPoint x="461.5" y="640" as="sourcePoint" />
-            <mxPoint x="461.5" y="680" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
         <mxCell id="q3_zZPwqO2UvvyeA4TtY-58" value="" style="endArrow=none;html=1;jumpStyle=arc;strokeWidth=2;" edge="1" parent="1">
           <mxGeometry width="50" height="50" relative="1" as="geometry">
             <mxPoint x="219.5" y="636" as="sourcePoint" />
@@ -239,14 +233,13 @@
             <mxPoint x="190" y="610" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="q3_zZPwqO2UvvyeA4TtY-69" value="" style="endArrow=classic;html=1;strokeWidth=2;fontSize=8;fillColor=#d5e8d4;strokeColor=#82b366;" edge="1" parent="1">
-          <mxGeometry width="50" height="50" relative="1" as="geometry">
-            <mxPoint x="231.7" y="500" as="sourcePoint" />
-            <mxPoint x="250" y="610" as="targetPoint" />
+        <mxCell id="q3_zZPwqO2UvvyeA4TtY-71" value="Node1的数据重新计算Hash，分桶" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=8;" vertex="1" connectable="0" parent="q3_zZPwqO2UvvyeA4TtY-68">
+          <mxGeometry x="-0.2771" y="2" relative="1" as="geometry">
+            <mxPoint x="15.19" y="-0.71" as="offset" />
           </mxGeometry>
         </mxCell>
         <mxCell id="q3_zZPwqO2UvvyeA4TtY-70" value="数据写入：" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;fontSize=8;" vertex="1" parent="1">
-          <mxGeometry x="40" y="337" width="80" height="20" as="geometry" />
+          <mxGeometry x="20" y="337" width="80" height="20" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
